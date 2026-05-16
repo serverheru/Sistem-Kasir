@@ -1,0 +1,529 @@
+<script>
+  let produkList = [];
+  let keranjang = [];
+  let lastReceipt = null;
+  let toastTimer = null;
+
+  const COFFEE_IMAGES = {
+    espresso: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=900&q=80",
+    latte: "https://images.unsplash.com/photo-1570968915860-54d5c301fa9f?auto=format&fit=crop&w=900&q=80",
+    cappuccino: "https://images.unsplash.com/photo-1534778101976-62847782c213?auto=format&fit=crop&w=900&q=80",
+    americano: "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80",
+    mocha: "https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=900&q=80",
+    cold: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=900&q=80",
+    manual: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=900&q=80",
+    default: "https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=900&q=80"
+  };
+
+  document.addEventListener("DOMContentLoaded", function () {
+    document.getElementById("bayarInput").addEventListener("input", hitungKembalian);
+    document.getElementById("searchInput").addEventListener("input", renderProduk);
+    document.getElementById("stockFilter").addEventListener("change", renderProduk);
+
+    loadProduk();
+    loadRiwayat();
+    loadRingkasanHariIni();
+  });
+
+  function loadProduk() {
+    setStatus("Memuat produk...");
+
+    google.script.run
+      .withSuccessHandler(function (data) {
+        produkList = Array.isArray(data) ? data : [];
+        renderProduk();
+        setStatus("Produk diperbarui");
+      })
+      .withFailureHandler(function (error) {
+        tampilkanPesan(error.message || "Gagal memuat produk.", "error");
+        setStatus("Gagal memuat produk");
+      })
+      .getProduk();
+  }
+
+  function renderProduk() {
+    const container = document.getElementById("produkList");
+    const empty = document.getElementById("produkEmpty");
+    const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+    const filter = document.getElementById("stockFilter").value;
+
+    const filtered = produkList.filter(function (produk) {
+      const cocokKeyword = !keyword ||
+        String(produk.nama_produk).toLowerCase().includes(keyword) ||
+        String(produk.id_produk).toLowerCase().includes(keyword);
+
+      const stok = Number(produk.stok || 0);
+      const cocokStok =
+        filter === "all" ||
+        (filter === "available" && stok > 0) ||
+        (filter === "low" && stok > 0 && stok <= 5) ||
+        (filter === "empty" && stok <= 0);
+
+      return cocokKeyword && cocokStok;
+    });
+
+    container.innerHTML = "";
+    document.getElementById("produkCount").innerText = filtered.length + " item";
+    empty.hidden = filtered.length > 0;
+
+    filtered.forEach(function (produk) {
+      const stok = Number(produk.stok || 0);
+      const imageUrl = getCoffeeImage(produk);
+      const div = document.createElement("article");
+      div.className = "product-card" + (stok <= 0 ? " is-empty" : "");
+
+      div.innerHTML = `
+        <div class="product-image-wrap">
+          <img class="product-image" src="${escapeAttribute(imageUrl)}" alt="Foto ${escapeAttribute(produk.nama_produk)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='${escapeAttribute(COFFEE_IMAGES.default)}'">
+        </div>
+        <div class="product-title">
+          <div>
+            <h3>${escapeHtml(produk.nama_produk)}</h3>
+            <div class="product-id">${escapeHtml(produk.id_produk)}</div>
+          </div>
+          <span class="${getStockBadgeClass(stok)}">${getStockLabel(stok)}</span>
+        </div>
+        <div>
+          <div class="price">${formatRupiah(produk.harga)}</div>
+          <div class="stock-line">
+            <span>Stok tersedia</span>
+            <strong>${stok}</strong>
+          </div>
+        </div>
+        <button class="btn primary" type="button" ${stok <= 0 ? "disabled" : ""} onclick="tambahKeKeranjang('${escapeAttribute(produk.id_produk)}')">
+          Tambah
+        </button>
+      `;
+
+      container.appendChild(div);
+    });
+  }
+
+  function tambahKeKeranjang(idProduk) {
+    const produk = produkList.find(function (item) {
+      return String(item.id_produk) === String(idProduk);
+    });
+
+    if (!produk) {
+      tampilkanPesan("Produk tidak ditemukan.", "error");
+      return;
+    }
+
+    const stok = Number(produk.stok || 0);
+    const itemKeranjang = keranjang.find(function (item) {
+      return String(item.id_produk) === String(idProduk);
+    });
+
+    const qtyBaru = itemKeranjang ? itemKeranjang.qty + 1 : 1;
+
+    if (qtyBaru > stok) {
+      tampilkanPesan("Stok " + produk.nama_produk + " hanya " + stok + ".", "error");
+      return;
+    }
+
+    if (itemKeranjang) {
+      itemKeranjang.qty = qtyBaru;
+    } else {
+      keranjang.push({
+        id_produk: produk.id_produk,
+        nama_produk: produk.nama_produk,
+        harga: Number(produk.harga),
+        gambar: getCoffeeImage(produk),
+        stok: stok,
+        qty: 1
+      });
+    }
+
+    renderKeranjang();
+  }
+
+  function renderKeranjang() {
+    const container = document.getElementById("keranjangBody");
+    const empty = document.getElementById("cartEmpty");
+    container.innerHTML = "";
+    empty.hidden = keranjang.length > 0;
+
+    keranjang.forEach(function (item, index) {
+      const subtotal = item.harga * item.qty;
+      const row = document.createElement("div");
+      row.className = "cart-item";
+
+      row.innerHTML = `
+        <div class="cart-product">
+          <img class="cart-thumb" src="${escapeAttribute(item.gambar || COFFEE_IMAGES.default)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='${escapeAttribute(COFFEE_IMAGES.default)}'">
+          <div>
+            <p class="cart-name">${escapeHtml(item.nama_produk)}</p>
+            <div class="cart-meta">${formatRupiah(item.harga)} x ${item.qty} = <strong>${formatRupiah(subtotal)}</strong></div>
+          </div>
+        </div>
+        <div class="qty-control">
+          <button type="button" onclick="ubahQty(${index}, ${item.qty - 1})">-</button>
+          <input type="number" min="1" max="${item.stok}" value="${item.qty}" onchange="ubahQty(${index}, this.value)">
+          <button type="button" onclick="ubahQty(${index}, ${item.qty + 1})">+</button>
+        </div>
+        <button class="icon-btn" type="button" onclick="hapusItem(${index})" aria-label="Hapus ${escapeAttribute(item.nama_produk)}">X</button>
+      `;
+
+      container.appendChild(row);
+    });
+
+    hitungTotal();
+  }
+
+  function ubahQty(index, value) {
+    const item = keranjang[index];
+    const qty = Number(value);
+
+    if (!item) {
+      return;
+    }
+
+    if (qty <= 0) {
+      hapusItem(index);
+      return;
+    }
+
+    if (qty > item.stok) {
+      tampilkanPesan("Stok " + item.nama_produk + " hanya " + item.stok + ".", "error");
+      item.qty = item.stok;
+    } else {
+      item.qty = qty;
+    }
+
+    renderKeranjang();
+  }
+
+  function hapusItem(index) {
+    keranjang.splice(index, 1);
+    renderKeranjang();
+  }
+
+  function kosongkanKeranjang() {
+    if (keranjang.length === 0) {
+      return;
+    }
+
+    keranjang = [];
+    renderKeranjang();
+    tampilkanPesan("Keranjang dikosongkan.");
+  }
+
+  function hitungTotal() {
+    const total = getTotal();
+    const itemCount = keranjang.reduce(function (sum, item) {
+      return sum + item.qty;
+    }, 0);
+
+    document.getElementById("totalText").innerText = formatRupiah(total);
+    document.getElementById("itemCountText").innerText = itemCount;
+    hitungKembalian();
+
+    return total;
+  }
+
+  function hitungKembalian() {
+    const total = getTotal();
+    const bayar = Number(document.getElementById("bayarInput").value || 0);
+    const kembalian = Math.max(bayar - total, 0);
+
+    document.getElementById("kembalianText").innerText = formatRupiah(kembalian);
+    return kembalian;
+  }
+
+  function getTotal() {
+    return keranjang.reduce(function (sum, item) {
+      return sum + item.harga * item.qty;
+    }, 0);
+  }
+
+  function setQuickBayar(nominal) {
+    document.getElementById("bayarInput").value = nominal;
+    hitungKembalian();
+  }
+
+  function setBayarPas() {
+    document.getElementById("bayarInput").value = getTotal();
+    hitungKembalian();
+  }
+
+  function simpan() {
+    if (keranjang.length === 0) {
+      tampilkanPesan("Keranjang masih kosong.", "error");
+      return;
+    }
+
+    const bayar = Number(document.getElementById("bayarInput").value || 0);
+    const total = hitungTotal();
+
+    if (bayar < total) {
+      tampilkanPesan("Uang bayar kurang " + formatRupiah(total - bayar) + ".", "error");
+      return;
+    }
+
+    const payload = {
+      items: keranjang.map(function (item) {
+        return {
+          id_produk: item.id_produk,
+          qty: item.qty
+        };
+      }),
+      bayar: bayar
+    };
+
+    setSavingState(true);
+    setStatus("Menyimpan transaksi...");
+
+    google.script.run
+      .withSuccessHandler(function (response) {
+        lastReceipt = {
+          response: response,
+          items: keranjang.map(function (item) {
+            return Object.assign({}, item);
+          })
+        };
+
+        tampilkanStruk(lastReceipt);
+        tampilkanPesan("Transaksi berhasil disimpan.");
+
+        keranjang = [];
+        document.getElementById("bayarInput").value = "";
+        renderKeranjang();
+        loadProduk();
+        loadRiwayat();
+        loadRingkasanHariIni();
+        setSavingState(false);
+      })
+      .withFailureHandler(function (error) {
+        tampilkanPesan(error.message || "Transaksi gagal disimpan.", "error");
+        setSavingState(false);
+        setStatus("Transaksi gagal");
+      })
+      .simpanTransaksi(payload);
+  }
+
+  function loadRiwayat() {
+    setStatus("Memuat riwayat...");
+
+    google.script.run
+      .withSuccessHandler(function (data) {
+        const riwayat = Array.isArray(data) ? data : [];
+        renderRiwayat(riwayat);
+        setStatus("Siap");
+      })
+      .withFailureHandler(function (error) {
+        tampilkanPesan(error.message || "Gagal memuat riwayat.", "error");
+        setStatus("Gagal memuat riwayat");
+      })
+      .getRiwayatTransaksi();
+  }
+
+  function refreshRiwayat() {
+    loadRiwayat();
+    loadRingkasanHariIni();
+  }
+
+  function loadRingkasanHariIni() {
+    google.script.run
+      .withSuccessHandler(function (data) {
+        renderStats(data || {});
+      })
+      .withFailureHandler(function () {
+        renderStats({});
+      })
+      .getRingkasanHariIni();
+  }
+
+  function renderRiwayat(data) {
+    const tbody = document.getElementById("riwayatBody");
+    tbody.innerHTML = "";
+
+    data.forEach(function (item) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(item.id_transaksi)}</td>
+        <td>${escapeHtml(item.tanggal)}</td>
+        <td>${formatRupiah(item.total)}</td>
+        <td>${formatRupiah(item.bayar)}</td>
+        <td>${formatRupiah(item.kembalian)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderStats(data) {
+    document.getElementById("todayCountText").innerText = Number(data.jumlah_transaksi || 0);
+    document.getElementById("todayRevenueText").innerText = formatRupiah(data.omzet || 0);
+    document.getElementById("soldCountText").innerText = Number(data.jumlah_item || 0);
+  }
+
+  function tampilkanStruk(receipt) {
+    const dialog = document.getElementById("receiptDialog");
+    const content = document.getElementById("receiptContent");
+    const response = receipt.response;
+
+    const itemRows = receipt.items.map(function (item) {
+      return `
+        <div class="receipt-line">
+          <span>${escapeHtml(item.nama_produk)} x ${item.qty}</span>
+          <strong>${formatRupiah(item.harga * item.qty)}</strong>
+        </div>
+      `;
+    }).join("");
+
+    content.innerHTML = `
+      <div class="receipt-line"><span>ID</span><strong>${escapeHtml(response.id_transaksi)}</strong></div>
+      <div class="receipt-line"><span>Waktu</span><strong>${escapeHtml(response.tanggal || "-")}</strong></div>
+      <div class="receipt-separator"></div>
+      ${itemRows}
+      <div class="receipt-separator"></div>
+      <div class="receipt-line"><span>Total</span><strong>${formatRupiah(response.total)}</strong></div>
+      <div class="receipt-line"><span>Bayar</span><strong>${formatRupiah(response.bayar)}</strong></div>
+      <div class="receipt-line"><span>Kembalian</span><strong>${formatRupiah(response.kembalian)}</strong></div>
+    `;
+
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    }
+  }
+
+  function tutupStruk() {
+    const dialog = document.getElementById("receiptDialog");
+
+    if (dialog.open) {
+      dialog.close();
+    }
+  }
+
+  function setSavingState(isSaving) {
+    const button = document.getElementById("simpanBtn");
+    button.disabled = isSaving;
+    button.innerText = isSaving ? "Menyimpan..." : "Simpan Transaksi";
+  }
+
+  function setStatus(text) {
+    document.getElementById("statusText").innerText = text;
+  }
+
+  function tampilkanPesan(message, type) {
+    const toast = document.getElementById("toast");
+    toast.innerText = message;
+    toast.style.background = type === "error" ? "#a33a25" : "#2b1a10";
+    toast.classList.add("show");
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toast.classList.remove("show");
+    }, 3200);
+  }
+
+  function getStockBadgeClass(stok) {
+    if (stok <= 0) {
+      return "stock-badge empty";
+    }
+
+    if (stok <= 5) {
+      return "stock-badge low";
+    }
+
+    return "stock-badge";
+  }
+
+  function getStockLabel(stok) {
+    if (stok <= 0) {
+      return "Habis";
+    }
+
+    if (stok <= 5) {
+      return "Menipis";
+    }
+
+    return "Tersedia";
+  }
+
+  function getCoffeeImage(produk) {
+    const customImage = String(produk.gambar || "").trim();
+
+    if (customImage) {
+      return normalizeImageUrl(customImage);
+    }
+
+    const nama = String(produk.nama_produk || "").toLowerCase();
+
+    if (nama.includes("espresso")) {
+      return COFFEE_IMAGES.espresso;
+    }
+
+    if (nama.includes("latte") || nama.includes("susu") || nama.includes("aren") || nama.includes("caramel")) {
+      return COFFEE_IMAGES.latte;
+    }
+
+    if (nama.includes("cappuccino") || nama.includes("kapucino")) {
+      return COFFEE_IMAGES.cappuccino;
+    }
+
+    if (nama.includes("americano") || nama.includes("long black")) {
+      return COFFEE_IMAGES.americano;
+    }
+
+    if (nama.includes("mocha") || nama.includes("moka") || nama.includes("coklat")) {
+      return COFFEE_IMAGES.mocha;
+    }
+
+    if (nama.includes("ice") || nama.includes("iced") || nama.includes("cold") || nama.includes("es kopi")) {
+      return COFFEE_IMAGES.cold;
+    }
+
+    if (nama.includes("v60") || nama.includes("manual") || nama.includes("filter")) {
+      return COFFEE_IMAGES.manual;
+    }
+
+    return COFFEE_IMAGES.default;
+  }
+
+  function normalizeImageUrl(url) {
+    const driveFileId = getGoogleDriveFileId(url);
+
+    if (driveFileId) {
+      return "https://drive.google.com/thumbnail?id=" + encodeURIComponent(driveFileId) + "&sz=w900";
+    }
+
+    return url;
+  }
+
+  function getGoogleDriveFileId(url) {
+    const filePathMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/i);
+
+    if (filePathMatch && filePathMatch[1]) {
+      return filePathMatch[1];
+    }
+
+    const queryMatch = url.match(/[?&]id=([^&]+)/i);
+
+    if (url.indexOf("drive.google.com") !== -1 && queryMatch && queryMatch[1]) {
+      return queryMatch[1];
+    }
+
+    return "";
+  }
+
+  function formatRupiah(angka) {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0
+    }).format(Number(angka || 0));
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/`/g, "&#096;");
+  }
+</script>

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <?!= include("style"); ?>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Coffee Point of Sale</p>
+          <h1>KopiKasir Pro</h1>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn ghost" type="button" onclick="loadProduk()">Refresh Produk</button>
+          <button class="btn primary" type="button" onclick="refreshRiwayat()">Refresh Riwayat</button>
+        </div>
+      </header>
+
+      <main class="dashboard">
+        <section class="panel catalog-panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Menu</p>
+              <h2>Daftar Produk</h2>
+            </div>
+            <span id="produkCount" class="pill">0 item</span>
+          </div>
+
+          <div class="toolbar">
+            <label class="search-box">
+              <span>Cari</span>
+              <input type="search" id="searchInput" placeholder="Nama kopi atau ID produk">
+            </label>
+            <select id="stockFilter" aria-label="Filter stok">
+              <option value="all">Semua stok</option>
+              <option value="available">Tersedia</option>
+              <option value="low">Stok menipis</option>
+              <option value="empty">Habis</option>
+            </select>
+          </div>
+
+          <div id="produkList" class="product-grid"></div>
+          <div id="produkEmpty" class="empty-state" hidden>
+            Produk tidak ditemukan.
+          </div>
+        </section>
+
+        <aside class="panel cart-panel">
+          <div class="panel-header">
+            <div>
+              <p class="section-kicker">Order</p>
+              <h2>Keranjang</h2>
+            </div>
+            <button class="btn ghost danger-text" type="button" onclick="kosongkanKeranjang()">Kosongkan</button>
+          </div>
+
+          <div class="cart-list" id="keranjangBody"></div>
+          <div id="cartEmpty" class="empty-state">
+            Pilih produk kopi untuk mulai transaksi.
+          </div>
+
+          <div class="checkout-box">
+            <div class="totals">
+              <div>
+                <span>Item</span>
+                <strong id="itemCountText">0</strong>
+              </div>
+              <div>
+                <span>Total</span>
+                <strong id="totalText">Rp 0</strong>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>Bayar</span>
+              <input type="number" min="0" id="bayarInput" placeholder="Masukkan nominal bayar">
+            </label>
+
+            <div class="quick-payments">
+              <button class="btn soft" type="button" onclick="setQuickBayar(20000)">20K</button>
+              <button class="btn soft" type="button" onclick="setQuickBayar(50000)">50K</button>
+              <button class="btn soft" type="button" onclick="setQuickBayar(100000)">100K</button>
+              <button class="btn soft" type="button" onclick="setBayarPas()">Uang Pas</button>
+            </div>
+
+            <div class="change-row">
+              <span>Kembalian</span>
+              <strong id="kembalianText">Rp 0</strong>
+            </div>
+
+            <button class="btn checkout" id="simpanBtn" type="button" onclick="simpan()">
+              Simpan Transaksi
+            </button>
+          </div>
+        </aside>
+      </main>
+
+      <section class="stats-row">
+        <div class="stat-card">
+          <span>Transaksi Hari Ini</span>
+          <strong id="todayCountText">0</strong>
+        </div>
+        <div class="stat-card">
+          <span>Omzet Hari Ini</span>
+          <strong id="todayRevenueText">Rp 0</strong>
+        </div>
+        <div class="stat-card">
+          <span>Produk Terjual</span>
+          <strong id="soldCountText">0</strong>
+        </div>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-header">
+          <div>
+            <p class="section-kicker">Riwayat</p>
+            <h2>Transaksi Terbaru</h2>
+          </div>
+          <span id="statusText" class="status-text">Siap</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID Transaksi</th>
+                <th>Tanggal</th>
+                <th>Total</th>
+                <th>Bayar</th>
+                <th>Kembalian</th>
+              </tr>
+            </thead>
+            <tbody id="riwayatBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="receiptDialog" class="receipt-dialog">
+      <div class="receipt-header">
+        <div>
+          <p class="section-kicker">Struk</p>
+          <h2>Transaksi Berhasil</h2>
+        </div>
+        <button class="icon-btn" type="button" onclick="tutupStruk()" aria-label="Tutup">X</button>
+      </div>
+      <div id="receiptContent" class="receipt-content"></div>
+      <div class="receipt-actions">
+        <button class="btn ghost" type="button" onclick="tutupStruk()">Tutup</button>
+        <button class="btn primary" type="button" onclick="window.print()">Cetak</button>
+      </div>
+    </dialog>
+
+    <?!= include("script"); ?>
+  </body>
+</html>
