@@ -1,8 +1,21 @@
 <script>
   let produkList = [];
   let keranjang = [];
+  let riwayatList = [];
   let lastReceipt = null;
   let toastTimer = null;
+  let catalogView = "compact";
+  let produkPage = 1;
+
+  const CHART_COLORS = ["#1f7a45", "#d6a02a", "#8a531f", "#14552f", "#a33a25", "#7a6045"];
+
+  const PAGE_META = {
+    kasir: { kicker: "Transaksi", title: "Kasir Cepat" },
+    riwayat: { kicker: "Riwayat", title: "Riwayat Transaksi" },
+    produk: { kicker: "Inventori", title: "Produk & Stok" },
+    laporan: { kicker: "Analitik", title: "Laporan Kasir" },
+    operasional: { kicker: "SOP", title: "Operasional Kasir" }
+  };
 
   const COFFEE_IMAGES = {
     espresso: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=900&q=80",
@@ -17,13 +30,66 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("bayarInput").addEventListener("input", hitungKembalian);
-    document.getElementById("searchInput").addEventListener("input", renderProduk);
-    document.getElementById("stockFilter").addEventListener("change", renderProduk);
+    document.getElementById("searchInput").addEventListener("input", function () {
+      produkPage = 1;
+      renderProduk();
+    });
+    document.getElementById("stockFilter").addEventListener("change", function () {
+      produkPage = 1;
+      renderProduk();
+    });
+    document.getElementById("categoryFilter").addEventListener("change", function () {
+      produkPage = 1;
+      renderProduk();
+    });
+    document.getElementById("pageSizeSelect").addEventListener("change", function () {
+      produkPage = 1;
+      renderProduk();
+    });
+    document.getElementById("historySearchInput").addEventListener("input", renderRiwayat);
+    window.addEventListener("resize", debounce(renderDashboardCharts, 180));
 
+    renderKeranjang();
     loadProduk();
     loadRiwayat();
     loadRingkasanHariIni();
   });
+
+  function showPage(pageName) {
+    const meta = PAGE_META[pageName] || PAGE_META.kasir;
+
+    document.querySelectorAll(".page").forEach(function (page) {
+      page.classList.toggle("active", page.id === "page-" + pageName);
+    });
+
+    document.querySelectorAll(".nav-link").forEach(function (link) {
+      link.classList.toggle("active", link.dataset.page === pageName);
+    });
+
+    document.getElementById("pageKicker").innerText = meta.kicker;
+    document.getElementById("pageTitle").innerText = meta.title;
+
+    if (pageName === "riwayat") {
+      renderRiwayat();
+    }
+
+    if (pageName === "produk" || pageName === "laporan") {
+      renderProdukSupportPages();
+    }
+
+    if (pageName === "laporan") {
+      renderDashboardCharts();
+    }
+  }
+
+  function refreshSemua() {
+    refreshProduk();
+    refreshRiwayat();
+  }
+
+  function refreshProduk() {
+    loadProduk();
+  }
 
   function loadProduk() {
     setStatus("Memuat produk...");
@@ -31,7 +97,11 @@
     google.script.run
       .withSuccessHandler(function (data) {
         produkList = Array.isArray(data) ? data : [];
+        produkPage = 1;
+        renderKategoriProduk();
         renderProduk();
+        renderProdukSupportPages();
+        renderDashboardCharts();
         setStatus("Produk diperbarui");
       })
       .withFailureHandler(function (error) {
@@ -41,62 +111,118 @@
       .getProduk();
   }
 
+  function renderKategoriProduk() {
+    const select = document.getElementById("categoryFilter");
+    const currentValue = select.value || "all";
+    const categories = getCategories();
+
+    select.innerHTML = '<option value="all">Semua kategori</option>';
+    categories.forEach(function (category) {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = category;
+      select.appendChild(option);
+    });
+
+    select.value = categories.indexOf(currentValue) >= 0 ? currentValue : "all";
+  }
+
   function renderProduk() {
     const container = document.getElementById("produkList");
     const empty = document.getElementById("produkEmpty");
-    const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
-    const filter = document.getElementById("stockFilter").value;
+    const filtered = getFilteredProduk();
+    const pageSize = getProdukPageSize();
+    const totalPages = Math.max(Math.ceil(filtered.length / pageSize), 1);
 
-    const filtered = produkList.filter(function (produk) {
-      const cocokKeyword = !keyword ||
-        String(produk.nama_produk).toLowerCase().includes(keyword) ||
-        String(produk.id_produk).toLowerCase().includes(keyword);
+    produkPage = Math.min(Math.max(produkPage, 1), totalPages);
 
-      const stok = Number(produk.stok || 0);
-      const cocokStok =
-        filter === "all" ||
-        (filter === "available" && stok > 0) ||
-        (filter === "low" && stok > 0 && stok <= 5) ||
-        (filter === "empty" && stok <= 0);
+    const start = (produkPage - 1) * pageSize;
+    const pageItems = filtered.slice(start, start + pageSize);
 
-      return cocokKeyword && cocokStok;
-    });
-
+    container.className = "product-list view-" + catalogView;
     container.innerHTML = "";
     document.getElementById("produkCount").innerText = filtered.length + " item";
+    document.getElementById("produkPageText").innerText = "Halaman " + produkPage + " / " + totalPages;
+    document.getElementById("prevProdukBtn").disabled = produkPage <= 1;
+    document.getElementById("nextProdukBtn").disabled = produkPage >= totalPages;
     empty.hidden = filtered.length > 0;
 
-    filtered.forEach(function (produk) {
-      const stok = Number(produk.stok || 0);
-      const imageUrl = getCoffeeImage(produk);
-      const div = document.createElement("article");
-      div.className = "product-card" + (stok <= 0 ? " is-empty" : "");
+    pageItems.forEach(function (produk) {
+      container.appendChild(buatKartuProduk(produk));
+    });
+  }
 
-      div.innerHTML = `
-        <div class="product-image-wrap">
-          <img class="product-image" src="${escapeAttribute(imageUrl)}" alt="Foto ${escapeAttribute(produk.nama_produk)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='${escapeAttribute(COFFEE_IMAGES.default)}'">
-        </div>
+  function buatKartuProduk(produk) {
+    const stok = Number(produk.stok || 0);
+    const imageUrl = getCoffeeImage(produk);
+    const div = document.createElement("article");
+    div.className = "product-card" + (stok <= 0 ? " is-empty" : "");
+
+    div.innerHTML = `
+      <div class="product-image-wrap">
+        <img class="product-image" src="${escapeAttribute(imageUrl)}" alt="Foto ${escapeAttribute(produk.nama_produk)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='${escapeAttribute(COFFEE_IMAGES.default)}'">
+      </div>
+      <div class="product-main">
         <div class="product-title">
           <div>
             <h3>${escapeHtml(produk.nama_produk)}</h3>
-            <div class="product-id">${escapeHtml(produk.id_produk)}</div>
+            <div class="product-id">${escapeHtml(produk.id_produk)} - ${escapeHtml(getKategoriProduk(produk))}</div>
           </div>
           <span class="${getStockBadgeClass(stok)}">${getStockLabel(stok)}</span>
         </div>
-        <div>
+        <div class="product-meta">
           <div class="price">${formatRupiah(produk.harga)}</div>
           <div class="stock-line">
-            <span>Stok tersedia</span>
+            <span>Stok</span>
             <strong>${stok}</strong>
           </div>
         </div>
-        <button class="btn primary" type="button" ${stok <= 0 ? "disabled" : ""} onclick="tambahKeKeranjang('${escapeAttribute(produk.id_produk)}')">
-          Tambah
-        </button>
-      `;
+      </div>
+      <button class="btn primary" type="button" ${stok <= 0 ? "disabled" : ""} onclick="tambahKeKeranjang('${escapeAttribute(produk.id_produk)}')">
+        Tambah
+      </button>
+    `;
 
-      container.appendChild(div);
+    return div;
+  }
+
+  function getFilteredProduk() {
+    const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+    const stockFilter = document.getElementById("stockFilter").value;
+    const categoryFilter = document.getElementById("categoryFilter").value;
+
+    return produkList.filter(function (produk) {
+      const stok = Number(produk.stok || 0);
+      const kategori = getKategoriProduk(produk);
+      const cocokKeyword = !keyword ||
+        String(produk.nama_produk).toLowerCase().includes(keyword) ||
+        String(produk.id_produk).toLowerCase().includes(keyword) ||
+        kategori.toLowerCase().includes(keyword);
+      const cocokStok =
+        stockFilter === "all" ||
+        (stockFilter === "available" && stok > 0) ||
+        (stockFilter === "low" && stok > 0 && stok <= 5) ||
+        (stockFilter === "empty" && stok <= 0);
+      const cocokKategori = categoryFilter === "all" || kategori === categoryFilter;
+
+      return cocokKeyword && cocokStok && cocokKategori;
     });
+  }
+
+  function getProdukPageSize() {
+    return Number(document.getElementById("pageSizeSelect").value || 24);
+  }
+
+  function ubahHalamanProduk(step) {
+    produkPage += step;
+    renderProduk();
+  }
+
+  function setCatalogView(mode) {
+    catalogView = mode === "grid" ? "grid" : "compact";
+    document.getElementById("compactViewBtn").classList.toggle("active", catalogView === "compact");
+    document.getElementById("gridViewBtn").classList.toggle("active", catalogView === "grid");
+    renderProduk();
   }
 
   function tambahKeKeranjang(idProduk) {
@@ -113,7 +239,6 @@
     const itemKeranjang = keranjang.find(function (item) {
       return String(item.id_produk) === String(idProduk);
     });
-
     const qtyBaru = itemKeranjang ? itemKeranjang.qty + 1 : 1;
 
     if (qtyBaru > stok) {
@@ -139,9 +264,13 @@
 
   function renderKeranjang() {
     const container = document.getElementById("keranjangBody");
-    const empty = document.getElementById("cartEmpty");
     container.innerHTML = "";
-    empty.hidden = keranjang.length > 0;
+
+    if (keranjang.length === 0) {
+      container.innerHTML = '<div class="empty-state cart-empty-state">Pilih produk untuk mulai transaksi.</div>';
+      hitungTotal();
+      return;
+    }
 
     keranjang.forEach(function (item, index) {
       const subtotal = item.harga * item.qty;
@@ -306,8 +435,9 @@
 
     google.script.run
       .withSuccessHandler(function (data) {
-        const riwayat = Array.isArray(data) ? data : [];
-        renderRiwayat(riwayat);
+        riwayatList = Array.isArray(data) ? data : [];
+        renderRiwayat();
+        renderDashboardCharts();
         setStatus("Siap");
       })
       .withFailureHandler(function (error) {
@@ -333,15 +463,28 @@
       .getRingkasanHariIni();
   }
 
-  function renderRiwayat(data) {
+  function renderRiwayat() {
     const tbody = document.getElementById("riwayatBody");
-    tbody.innerHTML = "";
+    const keyword = document.getElementById("historySearchInput").value.trim().toLowerCase();
+    const filtered = riwayatList.filter(function (item) {
+      return !keyword ||
+        String(item.id_transaksi).toLowerCase().includes(keyword) ||
+        String(item.tanggal).toLowerCase().includes(keyword);
+    });
+    const omzet = filtered.reduce(function (sum, item) {
+      return sum + Number(item.total || 0);
+    }, 0);
 
-    data.forEach(function (item) {
+    tbody.innerHTML = "";
+    document.getElementById("historyCountText").innerText = filtered.length + " transaksi";
+    document.getElementById("historyRevenueText").innerText = formatRupiah(omzet);
+
+    filtered.forEach(function (item) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${escapeHtml(item.id_transaksi)}</td>
         <td>${escapeHtml(item.tanggal)}</td>
+        <td>${Number(item.jumlah_item || 0)}</td>
         <td>${formatRupiah(item.total)}</td>
         <td>${formatRupiah(item.bayar)}</td>
         <td>${formatRupiah(item.kembalian)}</td>
@@ -351,16 +494,505 @@
   }
 
   function renderStats(data) {
-    document.getElementById("todayCountText").innerText = Number(data.jumlah_transaksi || 0);
-    document.getElementById("todayRevenueText").innerText = formatRupiah(data.omzet || 0);
+    const jumlahTransaksi = Number(data.jumlah_transaksi || 0);
+    const omzet = Number(data.omzet || 0);
+
+    document.getElementById("todayCountText").innerText = jumlahTransaksi;
+    document.getElementById("todayRevenueText").innerText = formatRupiah(omzet);
     document.getElementById("soldCountText").innerText = Number(data.jumlah_item || 0);
+    document.getElementById("avgTransactionText").innerText = formatRupiah(jumlahTransaksi ? omzet / jumlahTransaksi : 0);
+    renderDashboardCharts();
+  }
+
+  function renderProdukSupportPages() {
+    const totalProduk = produkList.length;
+    const lowStock = produkList.filter(function (produk) {
+      const stok = Number(produk.stok || 0);
+      return stok > 0 && stok <= 5;
+    });
+    const emptyStock = produkList.filter(function (produk) {
+      return Number(produk.stok || 0) <= 0;
+    });
+    const activeProducts = produkList.filter(function (produk) {
+      return Number(produk.stok || 0) > 0;
+    });
+    const stockValue = produkList.reduce(function (sum, produk) {
+      return sum + Number(produk.harga || 0) * Number(produk.stok || 0);
+    }, 0);
+
+    document.getElementById("produkTotalText").innerText = totalProduk;
+    document.getElementById("produkLowText").innerText = lowStock.length;
+    document.getElementById("stockValueText").innerText = formatRupiah(stockValue);
+    document.getElementById("activeProductText").innerText = activeProducts.length;
+    document.getElementById("emptyProductText").innerText = emptyStock.length;
+
+    renderProdukTable();
+    renderLowStockList(lowStock.concat(emptyStock).slice(0, 8));
+  }
+
+  function renderProdukTable() {
+    const tbody = document.getElementById("produkTableBody");
+    tbody.innerHTML = "";
+
+    produkList.forEach(function (produk) {
+      const stok = Number(produk.stok || 0);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>
+          <div class="table-product">
+            <img src="${escapeAttribute(getCoffeeImage(produk))}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null; this.src='${escapeAttribute(COFFEE_IMAGES.default)}'">
+            <div>
+              <strong>${escapeHtml(produk.nama_produk)}</strong>
+              <span>${escapeHtml(produk.id_produk)}</span>
+            </div>
+          </div>
+        </td>
+        <td>${escapeHtml(getKategoriProduk(produk))}</td>
+        <td>${formatRupiah(produk.harga)}</td>
+        <td>${stok}</td>
+        <td><span class="${getStockBadgeClass(stok)}">${getStockLabel(stok)}</span></td>
+        <td>
+          <div class="table-actions">
+            <button class="btn soft compact-btn" type="button" onclick="bukaFormProduk('${escapeAttribute(produk.id_produk)}')">Edit</button>
+            <button class="btn ghost compact-btn danger-text" type="button" onclick="hapusProdukClient('${escapeAttribute(produk.id_produk)}')">Hapus</button>
+          </div>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function bukaFormProduk(idProduk) {
+    const dialog = document.getElementById("produkDialog");
+    const produk = idProduk ? produkList.find(function (item) {
+      return String(item.id_produk) === String(idProduk);
+    }) : null;
+
+    document.getElementById("produkDialogTitle").innerText = produk ? "Edit Produk" : "Tambah Produk";
+    document.getElementById("produkOriginalId").value = produk ? produk.id_produk : "";
+    document.getElementById("produkIdInput").value = produk ? produk.id_produk : "";
+    document.getElementById("produkIdInput").readOnly = Boolean(produk);
+    document.getElementById("produkNamaInput").value = produk ? produk.nama_produk : "";
+    document.getElementById("produkHargaInput").value = produk ? Number(produk.harga || 0) : "";
+    document.getElementById("produkStokInput").value = produk ? Number(produk.stok || 0) : "";
+    document.getElementById("produkGambarInput").value = produk ? String(produk.gambar_asli || produk.gambar || "") : "";
+
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    }
+  }
+
+  function tutupFormProduk() {
+    const dialog = document.getElementById("produkDialog");
+
+    if (dialog.open) {
+      dialog.close();
+    }
+  }
+
+  function simpanFormProduk(event) {
+    event.preventDefault();
+
+    const payload = {
+      original_id: document.getElementById("produkOriginalId").value.trim(),
+      id_produk: document.getElementById("produkIdInput").value.trim(),
+      nama_produk: document.getElementById("produkNamaInput").value.trim(),
+      harga: Number(document.getElementById("produkHargaInput").value || 0),
+      stok: Number(document.getElementById("produkStokInput").value || 0),
+      gambar: document.getElementById("produkGambarInput").value.trim()
+    };
+
+    setProdukSavingState(true);
+
+    google.script.run
+      .withSuccessHandler(function (response) {
+        tampilkanPesan(response.message || "Produk berhasil disimpan.");
+        setProdukSavingState(false);
+        tutupFormProduk();
+        loadProduk();
+      })
+      .withFailureHandler(function (error) {
+        tampilkanPesan(error.message || "Produk gagal disimpan.", "error");
+        setProdukSavingState(false);
+      })
+      .simpanProduk(payload);
+  }
+
+  function hapusProdukClient(idProduk) {
+    const produk = produkList.find(function (item) {
+      return String(item.id_produk) === String(idProduk);
+    });
+    const namaProduk = produk ? produk.nama_produk : idProduk;
+
+    if (!confirm("Hapus produk " + namaProduk + "?")) {
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function (response) {
+        tampilkanPesan(response.message || "Produk berhasil dihapus.");
+        loadProduk();
+      })
+      .withFailureHandler(function (error) {
+        tampilkanPesan(error.message || "Produk gagal dihapus.", "error");
+      })
+      .hapusProduk(idProduk);
+  }
+
+  function setProdukSavingState(isSaving) {
+    const button = document.getElementById("produkSubmitBtn");
+    button.disabled = isSaving;
+    button.innerText = isSaving ? "Menyimpan..." : "Simpan Produk";
+  }
+
+  function renderLowStockList(items) {
+    const container = document.getElementById("lowStockList");
+
+    if (items.length === 0) {
+      container.innerHTML = '<div class="empty-state">Semua stok aman.</div>';
+      return;
+    }
+
+    container.innerHTML = items.map(function (produk) {
+      const stok = Number(produk.stok || 0);
+      return `
+        <div class="mini-list-item">
+          <div>
+            <strong>${escapeHtml(produk.nama_produk)}</strong>
+            <span>${escapeHtml(getKategoriProduk(produk))}</span>
+          </div>
+          <span class="${getStockBadgeClass(stok)}">${stok} stok</span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderDashboardCharts() {
+    if (!document.getElementById("trendChart")) {
+      return;
+    }
+
+    drawLineChart("trendChart", getRevenueTrendData());
+    drawPieChart("categoryPieChart", getStockByCategoryData(), "categoryPieLegend");
+    drawBarChart("stockBarChart", getTopStockData());
+  }
+
+  function getRevenueTrendData() {
+    const days = [];
+    const map = {};
+
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+
+      const key = [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0")
+      ].join("-");
+
+      map[key] = 0;
+      days.push({
+        key: key,
+        label: String(date.getDate()).padStart(2, "0") + "/" + String(date.getMonth() + 1).padStart(2, "0")
+      });
+    }
+
+    riwayatList.forEach(function (item) {
+      const key = getRiwayatDateKey(item.tanggal);
+
+      if (Object.prototype.hasOwnProperty.call(map, key)) {
+        map[key] += Number(item.total || 0);
+      }
+    });
+
+    return days.map(function (day) {
+      return {
+        label: day.label,
+        value: map[day.key]
+      };
+    });
+  }
+
+  function getStockByCategoryData() {
+    const map = {};
+
+    produkList.forEach(function (produk) {
+      const kategori = getKategoriProduk(produk);
+      map[kategori] = (map[kategori] || 0) + Number(produk.stok || 0);
+    });
+
+    return Object.keys(map).map(function (label) {
+      return {
+        label: label,
+        value: map[label]
+      };
+    });
+  }
+
+  function getTopStockData() {
+    return produkList
+      .slice()
+      .sort(function (a, b) {
+        return Number(b.stok || 0) - Number(a.stok || 0);
+      })
+      .slice(0, 8)
+      .map(function (produk) {
+        return {
+          label: produk.nama_produk,
+          value: Number(produk.stok || 0)
+        };
+      });
+  }
+
+  function drawLineChart(canvasId, data) {
+    const chart = prepareCanvas(canvasId);
+
+    if (!chart) {
+      return;
+    }
+
+    const ctx = chart.ctx;
+    const width = chart.width;
+    const height = chart.height;
+    const padding = { top: 18, right: 18, bottom: 34, left: 54 };
+    const maxValue = Math.max.apply(null, data.map(function (item) { return item.value; }).concat([1]));
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+
+    clearChart(ctx, width, height);
+    drawChartGrid(ctx, padding, width, height);
+
+    ctx.strokeStyle = "#1f7a45";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+
+    data.forEach(function (item, index) {
+      const x = padding.left + (data.length === 1 ? 0 : index * (plotWidth / (data.length - 1)));
+      const y = padding.top + plotHeight - (item.value / maxValue) * plotHeight;
+
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+
+    ctx.stroke();
+
+    data.forEach(function (item, index) {
+      const x = padding.left + (data.length === 1 ? 0 : index * (plotWidth / (data.length - 1)));
+      const y = padding.top + plotHeight - (item.value / maxValue) * plotHeight;
+
+      ctx.fillStyle = "#d6a02a";
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#7a6045";
+      ctx.font = "11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(item.label, x, height - 12);
+    });
+
+    ctx.fillStyle = "#7a6045";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(formatRupiah(maxValue), padding.left - 8, padding.top + 4);
+    ctx.fillText("Rp 0", padding.left - 8, padding.top + plotHeight);
+  }
+
+  function drawPieChart(canvasId, data, legendId) {
+    const chart = prepareCanvas(canvasId);
+
+    if (!chart) {
+      return;
+    }
+
+    const ctx = chart.ctx;
+    const width = chart.width;
+    const height = chart.height;
+    const total = data.reduce(function (sum, item) {
+      return sum + Number(item.value || 0);
+    }, 0);
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.max(Math.min(width, height) / 2 - 18, 10);
+    let startAngle = -Math.PI / 2;
+
+    clearChart(ctx, width, height);
+
+    if (total <= 0) {
+      drawNoData(ctx, width, height);
+      renderChartLegend(legendId, []);
+      return;
+    }
+
+    data.forEach(function (item, index) {
+      const angle = (item.value / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(centerX, centerY);
+      ctx.fillStyle = CHART_COLORS[index % CHART_COLORS.length];
+      ctx.arc(centerX, centerY, radius, startAngle, startAngle + angle);
+      ctx.closePath();
+      ctx.fill();
+      startAngle += angle;
+    });
+
+    renderChartLegend(legendId, data);
+  }
+
+  function drawBarChart(canvasId, data) {
+    const chart = prepareCanvas(canvasId);
+
+    if (!chart) {
+      return;
+    }
+
+    const ctx = chart.ctx;
+    const width = chart.width;
+    const height = chart.height;
+    const padding = { top: 16, right: 22, bottom: 18, left: 120 };
+    const rowHeight = Math.max((height - padding.top - padding.bottom) / Math.max(data.length, 1), 18);
+    const maxValue = Math.max.apply(null, data.map(function (item) { return item.value; }).concat([1]));
+
+    clearChart(ctx, width, height);
+
+    if (data.length === 0) {
+      drawNoData(ctx, width, height);
+      return;
+    }
+
+    data.forEach(function (item, index) {
+      const y = padding.top + index * rowHeight + 4;
+      const barWidth = (Number(item.value || 0) / maxValue) * (width - padding.left - padding.right);
+
+      ctx.fillStyle = "#7a6045";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(limitText(item.label, 17), padding.left - 10, y + rowHeight / 2 + 4);
+
+      ctx.fillStyle = index % 2 === 0 ? "#1f7a45" : "#d6a02a";
+      roundedRect(ctx, padding.left, y, Math.max(barWidth, 3), rowHeight - 8, 5);
+      ctx.fill();
+
+      ctx.fillStyle = "#2b1a10";
+      ctx.textAlign = "left";
+      ctx.fillText(String(item.value), padding.left + barWidth + 7, y + rowHeight / 2 + 4);
+    });
+  }
+
+  function prepareCanvas(canvasId) {
+    const canvas = document.getElementById(canvasId);
+
+    if (!canvas) {
+      return null;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(Math.floor(rect.width || canvas.parentElement.clientWidth || 320), 260);
+    const height = Number(canvas.getAttribute("height") || 220);
+    const ratio = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext("2d");
+
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    return {
+      ctx: ctx,
+      width: width,
+      height: height
+    };
+  }
+
+  function clearChart(ctx, width, height) {
+    ctx.clearRect(0, 0, width, height);
+  }
+
+  function drawChartGrid(ctx, padding, width, height) {
+    const plotHeight = height - padding.top - padding.bottom;
+
+    ctx.strokeStyle = "#e4d0ad";
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= 3; i++) {
+      const y = padding.top + (plotHeight / 3) * i;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(width - padding.right, y);
+      ctx.stroke();
+    }
+  }
+
+  function drawNoData(ctx, width, height) {
+    ctx.fillStyle = "#7a6045";
+    ctx.font = "13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Belum ada data", width / 2, height / 2);
+  }
+
+  function renderChartLegend(legendId, data) {
+    const legend = document.getElementById(legendId);
+
+    if (!legend) {
+      return;
+    }
+
+    legend.innerHTML = data.map(function (item, index) {
+      return `
+        <span>
+          <i style="background:${CHART_COLORS[index % CHART_COLORS.length]}"></i>
+          ${escapeHtml(item.label)} (${item.value})
+        </span>
+      `;
+    }).join("");
+  }
+
+  function roundedRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+
+  function getRiwayatDateKey(value) {
+    const match = String(value || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+
+    if (!match) {
+      return "";
+    }
+
+    return match[3] + "-" + match[2] + "-" + match[1];
+  }
+
+  function limitText(text, maxLength) {
+    const value = String(text || "");
+    return value.length > maxLength ? value.slice(0, maxLength - 1) + "..." : value;
+  }
+
+  function debounce(fn, delay) {
+    let timer = null;
+
+    return function () {
+      clearTimeout(timer);
+      timer = setTimeout(fn, delay);
+    };
   }
 
   function tampilkanStruk(receipt) {
     const dialog = document.getElementById("receiptDialog");
     const content = document.getElementById("receiptContent");
     const response = receipt.response;
-
     const itemRows = receipt.items.map(function (item) {
       return `
         <div class="receipt-line">
@@ -371,6 +1003,11 @@
     }).join("");
 
     content.innerHTML = `
+      <div class="receipt-store">
+        <strong>Heru's Coffee</strong>
+        <span>Coffee Point of Sale</span>
+      </div>
+      <div class="receipt-separator"></div>
       <div class="receipt-line"><span>ID</span><strong>${escapeHtml(response.id_transaksi)}</strong></div>
       <div class="receipt-line"><span>Waktu</span><strong>${escapeHtml(response.tanggal || "-")}</strong></div>
       <div class="receipt-separator"></div>
@@ -414,6 +1051,34 @@
     toastTimer = setTimeout(function () {
       toast.classList.remove("show");
     }, 3200);
+  }
+
+  function getCategories() {
+    const map = {};
+
+    produkList.forEach(function (produk) {
+      map[getKategoriProduk(produk)] = true;
+    });
+
+    return Object.keys(map).sort();
+  }
+
+  function getKategoriProduk(produk) {
+    const nama = String(produk.nama_produk || "").toLowerCase();
+
+    if (nama.includes("kopi") || nama.includes("coffee") || nama.includes("espresso") || nama.includes("latte") || nama.includes("americano") || nama.includes("cappuccino")) {
+      return "Kopi";
+    }
+
+    if (nama.includes("teh") || nama.includes("tea") || nama.includes("mineral") || nama.includes("soda") || nama.includes("jus")) {
+      return "Minuman";
+    }
+
+    if (nama.includes("roti") || nama.includes("toast") || nama.includes("mie") || nama.includes("nasi") || nama.includes("snack")) {
+      return "Makanan";
+    }
+
+    return "Lainnya";
   }
 
   function getStockBadgeClass(stok) {

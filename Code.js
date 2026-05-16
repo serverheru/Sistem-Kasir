@@ -4,7 +4,7 @@ function doGet() {
   return HtmlService
     .createTemplateFromFile("index")
     .evaluate()
-    .setTitle("KopiKasir Pro")
+    .setTitle("Heru's Coffee")
     .addMetaTag("viewport", "width=device-width, initial-scale=1");
 }
 

@@ -26,7 +26,8 @@ function getProduk() {
         nama_produk: String(row[kolom.nama_produk]),
         harga: Number(row[kolom.harga]) || 0,
         stok: Number(row[kolom.stok]) || 0,
-        gambar: getUrlGambarProduk(gambar)
+        gambar: getUrlGambarProduk(gambar),
+        gambar_asli: gambar
       };
     });
 }
@@ -162,6 +163,133 @@ function getIndexKolom(indexByName, namaKolom, fallbackIndex) {
   return Object.prototype.hasOwnProperty.call(indexByName, namaKolom)
     ? indexByName[namaKolom]
     : fallbackIndex;
+}
+
+function simpanProduk(payload) {
+  const sheet = getSheet("Produk");
+
+  if (!sheet) {
+    throw new Error("Sheet Produk tidak ditemukan.");
+  }
+
+  const produk = normalisasiPayloadProduk(payload);
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const kolom = getKolomProduk(header);
+  const originalId = payload && payload.original_id ? String(payload.original_id).trim() : "";
+  let targetRow = -1;
+
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][kolom.id_produk] || "").trim();
+
+    if (id === produk.id_produk && (!originalId || originalId !== produk.id_produk)) {
+      throw new Error("ID produk sudah digunakan.");
+    }
+
+    if (originalId && id === originalId) {
+      targetRow = i + 1;
+    }
+  }
+
+  if (originalId) {
+    if (targetRow < 0) {
+      throw new Error("Produk yang akan diubah tidak ditemukan.");
+    }
+
+    const rowValues = buatRowProduk(produk, kolom, data[targetRow - 1].slice(), header.length);
+    sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
+    return {
+      status: true,
+      message: "Produk berhasil diperbarui."
+    };
+  }
+
+  const rowValues = buatRowProduk(produk, kolom, [], header.length);
+  sheet.appendRow(rowValues);
+  return {
+    status: true,
+    message: "Produk berhasil ditambahkan."
+  };
+}
+
+function hapusProduk(idProduk) {
+  const sheet = getSheet("Produk");
+
+  if (!sheet) {
+    throw new Error("Sheet Produk tidak ditemukan.");
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const kolom = getKolomProduk(header);
+  const idTarget = String(idProduk || "").trim();
+
+  if (!idTarget) {
+    throw new Error("ID produk tidak valid.");
+  }
+
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][kolom.id_produk] || "").trim();
+
+    if (id === idTarget) {
+      sheet.deleteRow(i + 1);
+      return {
+        status: true,
+        message: "Produk berhasil dihapus."
+      };
+    }
+  }
+
+  throw new Error("Produk tidak ditemukan.");
+}
+
+function normalisasiPayloadProduk(payload) {
+  const idProduk = payload && String(payload.id_produk || "").trim();
+  const namaProduk = payload && String(payload.nama_produk || "").trim();
+  const harga = Number(payload && payload.harga);
+  const stok = Number(payload && payload.stok);
+  const gambar = payload && payload.gambar ? String(payload.gambar).trim() : "";
+
+  if (!idProduk) {
+    throw new Error("ID produk wajib diisi.");
+  }
+
+  if (!namaProduk) {
+    throw new Error("Nama produk wajib diisi.");
+  }
+
+  if (harga < 0 || !Number.isFinite(harga)) {
+    throw new Error("Harga produk tidak valid.");
+  }
+
+  if (stok < 0 || !Number.isInteger(stok)) {
+    throw new Error("Stok produk harus angka bulat minimal 0.");
+  }
+
+  return {
+    id_produk: idProduk,
+    nama_produk: namaProduk,
+    harga: harga,
+    stok: stok,
+    gambar: gambar
+  };
+}
+
+function buatRowProduk(produk, kolom, existingRow, columnCount) {
+  const row = existingRow.length > 0
+    ? existingRow
+    : new Array(Math.max(columnCount, 5)).fill("");
+
+  while (row.length < Math.max(columnCount, 5)) {
+    row.push("");
+  }
+
+  row[kolom.id_produk] = produk.id_produk;
+  row[kolom.nama_produk] = produk.nama_produk;
+  row[kolom.harga] = produk.harga;
+  row[kolom.stok] = produk.stok;
+  row[kolom.gambar] = produk.gambar;
+  return row;
 }
 
 function getProdukById(idProduk) {
