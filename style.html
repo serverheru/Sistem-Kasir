@@ -48,22 +48,35 @@
     white-space: nowrap;
   }
 
+  /* Sidebar selalu sebagai overlay slide-in — hamburger selalu tampil */
   .app-frame {
-    display: grid;
-    grid-template-columns: 260px minmax(0, 1fr);
+    display: block;
     min-height: 100vh;
   }
 
   .sidebar {
-    position: sticky;
+    position: fixed;
     top: 0;
+    left: 0;
+    bottom: 0;
+    width: 272px;
+    height: 100vh;
+    z-index: 50;
     display: flex;
     flex-direction: column;
     gap: 18px;
-    height: 100vh;
-    padding: 22px;
+    padding: 22px 18px;
     background: linear-gradient(180deg, #2b1a10 0%, #14552f 100%);
     color: #fffdf7;
+    transform: translateX(-100%);
+    transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.32s ease;
+    box-shadow: none;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: 6px 0 40px rgba(43, 26, 16, 0.32);
   }
 
   .brand-block {
@@ -179,6 +192,46 @@
     background: linear-gradient(180deg, #fffdf7 0%, #fff6df 100%);
   }
 
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  /* Hamburger selalu tampil — sidebar selalu overlay */
+  .hamburger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 253, 247, 0.9);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    box-shadow: 0 2px 8px rgba(63, 42, 25, 0.12);
+    transition: background 0.16s ease;
+  }
+
+  .hamburger-btn:hover {
+    background: var(--gold-soft);
+    transform: none;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(43, 26, 16, 0);
+    z-index: 40;
+    pointer-events: none;        /* tidak menghalangi klik saat sidebar tertutup */
+    backdrop-filter: blur(0px);
+    transition: background 0.3s ease, backdrop-filter 0.3s ease;
+  }
+
+  .sidebar-overlay.mobile-open {
+    background: rgba(43, 26, 16, 0.52);
+    backdrop-filter: blur(2px);
+    pointer-events: auto;        /* aktif saat sidebar terbuka */
+  }
+
   .topbar h2 {
     font-size: clamp(26px, 3vw, 38px);
     line-height: 1.05;
@@ -213,11 +266,48 @@
     display: block;
   }
 
+  /* Kasir: layout dua kolom, catalog bisa scroll mandiri */
   .pos-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 390px;
     gap: 18px;
-    align-items: start;
+    align-items: stretch;     /* kedua kolom mengisi tinggi yang sama */
+    height: calc(100vh - 158px); /* viewport - topbar (92px) - padding (22px*2) - gap (18px) */
+  }
+
+  /* Catalog panel: panel header & toolbar tetap, product list scroll */
+  .catalog-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .catalog-panel .product-list,
+  .catalog-panel #produkEmpty {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 4px;
+    scroll-behavior: smooth;
+  }
+
+  /* Scrollbar tipis agar tidak memakan tempat */
+  .catalog-panel .product-list::-webkit-scrollbar {
+    width: 5px;
+  }
+  .catalog-panel .product-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .catalog-panel .product-list::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 999px;
+  }
+
+  /* Pagination terdorong ke paling bawah panel */
+  .catalog-panel .pagination-bar {
+    margin-top: auto;
+    flex-shrink: 0;
   }
 
   .panel {
@@ -752,12 +842,32 @@
     min-width: 0;
   }
 
+  /* Wrapper rasio responsif agar canvas tidak terdistorsi */
+  .chart-canvas-wrap {
+    position: relative;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 253, 247, 0.6);
+  }
+
+  .chart-canvas-wrap.ratio-16-5 {
+    aspect-ratio: 16 / 5;
+  }
+
+  .chart-canvas-wrap.ratio-4-3 {
+    aspect-ratio: 4 / 3;
+  }
+
+  .chart-canvas-wrap.ratio-16-6 {
+    aspect-ratio: 16 / 6;
+  }
+
   .chart-card canvas {
     display: block;
-    width: 100%;
-    max-width: 100%;
+    width: 100% !important;
+    height: 100% !important;
     border-radius: 8px;
-    background: rgba(255, 253, 247, 0.6);
   }
 
   .wide-chart {
@@ -981,35 +1091,16 @@
   }
 
   @media (max-width: 1180px) {
-    .app-frame {
+    .pos-layout {
       grid-template-columns: 1fr;
-    }
-
-    .sidebar {
-      position: static;
       height: auto;
-      padding: 14px;
     }
 
-    .brand-block {
-      grid-template-columns: 42px minmax(0, 1fr);
+    .catalog-panel {
+      height: auto;
+      max-height: calc(100vh - 180px);
     }
 
-    .brand-mark {
-      width: 42px;
-      height: 42px;
-    }
-
-    .nav-menu {
-      grid-template-columns: repeat(5, minmax(120px, 1fr));
-      overflow-x: auto;
-    }
-
-    .sidebar-status {
-      display: none;
-    }
-
-    .pos-layout,
     .support-grid,
     .chart-grid {
       grid-template-columns: 1fr;

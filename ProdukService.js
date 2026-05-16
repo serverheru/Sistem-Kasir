@@ -297,6 +297,35 @@ function getProdukById(idProduk) {
   return produkList.find(produk => String(produk.id_produk) === String(idProduk));
 }
 
+function updateStokProdukBatch(items) {
+  const sheet = getSheet("Produk");
+
+  if (!sheet) {
+    throw new Error("Sheet Produk tidak ditemukan.");
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const header = data[0];
+  const kolom = getKolomProduk(header);
+
+  items.forEach(item => {
+    for (let i = 1; i < data.length; i++) {
+      const id = data[i][kolom.id_produk];
+
+      if (String(id) === String(item.id_produk)) {
+        const stokSekarang = Number(data[i][kolom.stok]);
+        const stokBaru = stokSekarang - item.qty;
+        if (stokBaru < 0) throw new Error("Stok produk tidak cukup: " + data[i][kolom.nama_produk]);
+        data[i][kolom.stok] = stokBaru;
+        break;
+      }
+    }
+  });
+
+  const stokColumn = data.map(row => [row[kolom.stok]]);
+  sheet.getRange(1, kolom.stok + 1, data.length, 1).setValues(stokColumn);
+}
+
 function updateStokProduk(idProduk, qtyTerjual) {
   const sheet = getSheet("Produk");
 

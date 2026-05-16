@@ -65,6 +65,7 @@
     document.querySelectorAll(".nav-link").forEach(function (link) {
       link.classList.toggle("active", link.dataset.page === pageName);
     });
+    closeSidebar();
 
     document.getElementById("pageKicker").innerText = meta.kicker;
     document.getElementById("pageTitle").innerText = meta.title;
@@ -79,6 +80,18 @@
 
     if (pageName === "laporan") {
       renderDashboardCharts();
+    }
+  }
+
+  function toggleSidebar() {
+    document.querySelector('.sidebar').classList.toggle('mobile-open');
+    document.getElementById('sidebarOverlay').classList.toggle('mobile-open');
+  }
+
+  function closeSidebar() {
+    document.querySelector('.sidebar').classList.remove('mobile-open');
+    if (document.getElementById('sidebarOverlay')) {
+      document.getElementById('sidebarOverlay').classList.remove('mobile-open');
     }
   }
 
@@ -396,6 +409,7 @@
           qty: item.qty
         };
       }),
+      nama_pembeli: document.getElementById("namaPembeliInput").value.trim(),
       bayar: bayar
     };
 
@@ -416,6 +430,7 @@
 
         keranjang = [];
         document.getElementById("bayarInput").value = "";
+        document.getElementById("namaPembeliInput").value = "";
         renderKeranjang();
         loadProduk();
         loadRiwayat();
@@ -469,7 +484,8 @@
     const filtered = riwayatList.filter(function (item) {
       return !keyword ||
         String(item.id_transaksi).toLowerCase().includes(keyword) ||
-        String(item.tanggal).toLowerCase().includes(keyword);
+        String(item.tanggal).toLowerCase().includes(keyword) ||
+        String(item.nama_pembeli || "").toLowerCase().includes(keyword);
     });
     const omzet = filtered.reduce(function (sum, item) {
       return sum + Number(item.total || 0);
@@ -484,6 +500,7 @@
       tr.innerHTML = `
         <td>${escapeHtml(item.id_transaksi)}</td>
         <td>${escapeHtml(item.tanggal)}</td>
+        <td>${escapeHtml(item.nama_pembeli || "-")}</td>
         <td>${Number(item.jumlah_item || 0)}</td>
         <td>${formatRupiah(item.total)}</td>
         <td>${formatRupiah(item.bayar)}</td>
@@ -889,16 +906,24 @@
       return null;
     }
 
-    const rect = canvas.getBoundingClientRect();
-    const width = Math.max(Math.floor(rect.width || canvas.parentElement.clientWidth || 320), 260);
-    const height = Number(canvas.getAttribute("height") || 220);
+    // Baca dimensi nyata dari wrapper (aspect-ratio CSS), bukan dari atribut HTML
+    const wrapper = canvas.parentElement;
+    const wrapRect = wrapper ? wrapper.getBoundingClientRect() : null;
+    const width = Math.max(
+      Math.floor((wrapRect && wrapRect.width) || canvas.clientWidth || canvas.parentElement.clientWidth || 320),
+      260
+    );
+    const height = Math.max(
+      Math.floor((wrapRect && wrapRect.height) || canvas.clientHeight || 220),
+      80
+    );
     const ratio = window.devicePixelRatio || 1;
     const ctx = canvas.getContext("2d");
 
     canvas.width = width * ratio;
     canvas.height = height * ratio;
-    canvas.style.width = width + "px";
-    canvas.style.height = height + "px";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 
     return {
@@ -1009,6 +1034,7 @@
       </div>
       <div class="receipt-separator"></div>
       <div class="receipt-line"><span>ID</span><strong>${escapeHtml(response.id_transaksi)}</strong></div>
+      <div class="receipt-line"><span>Pembeli</span><strong>${escapeHtml(response.nama_pembeli || "-")}</strong></div>
       <div class="receipt-line"><span>Waktu</span><strong>${escapeHtml(response.tanggal || "-")}</strong></div>
       <div class="receipt-separator"></div>
       ${itemRows}

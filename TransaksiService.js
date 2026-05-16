@@ -16,6 +16,7 @@ function simpanTransaksi(payload) {
 
     const items = normalisasiItems(payload && payload.items);
     const bayar = Number(payload && payload.bayar);
+    const namaPembeli = payload && payload.nama_pembeli ? String(payload.nama_pembeli).trim() : "-";
 
     if (items.length === 0) {
       throw new Error("Keranjang masih kosong.");
@@ -29,9 +30,10 @@ function simpanTransaksi(payload) {
     const tanggal = new Date();
     const detailRows = [];
     let total = 0;
+    const allProducts = getProduk();
 
     items.forEach(item => {
-      const produk = getProdukById(item.id_produk);
+      const produk = allProducts.find(p => String(p.id_produk) === String(item.id_produk));
 
       if (!produk) {
         throw new Error("Produk tidak ditemukan: " + item.id_produk);
@@ -50,7 +52,8 @@ function simpanTransaksi(payload) {
         produk.nama_produk,
         produk.harga,
         item.qty,
-        subtotal
+        subtotal,
+        namaPembeli
       ]);
     });
 
@@ -65,7 +68,8 @@ function simpanTransaksi(payload) {
       tanggal,
       total,
       bayar,
-      kembalian
+      kembalian,
+      namaPembeli
     ]);
 
     if (detailRows.length > 0) {
@@ -74,14 +78,13 @@ function simpanTransaksi(payload) {
         .setValues(detailRows);
     }
 
-    items.forEach(item => {
-      updateStokProduk(item.id_produk, item.qty);
-    });
+    updateStokProdukBatch(items);
 
     return {
       status: true,
       message: "Transaksi berhasil disimpan.",
       id_transaksi: idTransaksi,
+      nama_pembeli: namaPembeli,
       tanggal: Utilities.formatDate(tanggal, "Asia/Jakarta", "dd/MM/yyyy HH:mm:ss"),
       total: total,
       bayar: bayar,
@@ -147,6 +150,7 @@ function getRiwayatTransaksi() {
       return {
         id_transaksi: idTransaksi,
         tanggal: Utilities.formatDate(new Date(row[1]), "Asia/Jakarta", "dd/MM/yyyy HH:mm:ss"),
+        nama_pembeli: row[5] || "-",
         total: Number(row[2]) || 0,
         bayar: Number(row[3]) || 0,
         kembalian: Number(row[4]) || 0,
