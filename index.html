@@ -59,41 +59,39 @@
                   <span id="produkCount" class="pill">0 item</span>
                 </div>
 
-                <div class="catalog-tools">
-                  <label class="search-box">
-                    <span>Cari</span>
-                    <input type="search" id="searchInput" placeholder="Nama produk atau ID">
-                  </label>
-                  <label class="field compact-field">
-                    <span>Kategori</span>
-                    <select id="categoryFilter" aria-label="Filter kategori">
-                      <option value="all">Semua kategori</option>
+                <div class="catalog-tools-compact">
+                  <div class="search-wrapper">
+                    <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="search" id="searchInput" placeholder="Cari nama atau ID produk...">
+                  </div>
+                  
+                  <div class="filter-group">
+                    <select id="categoryFilter" aria-label="Filter kategori" title="Kategori">
+                      <option value="all">Semua Kategori</option>
                     </select>
-                  </label>
-                  <label class="field compact-field">
-                    <span>Stok</span>
-                    <select id="stockFilter" aria-label="Filter stok">
-                      <option value="all">Semua stok</option>
+                    
+                    <select id="stockFilter" aria-label="Filter stok" title="Stok">
+                      <option value="all">Semua Stok</option>
                       <option value="available">Tersedia</option>
-                      <option value="low">Stok menipis</option>
+                      <option value="low">Menipis</option>
                       <option value="empty">Habis</option>
                     </select>
-                  </label>
-                </div>
 
-                <div class="catalog-subtools">
-                  <div class="segmented" aria-label="Mode tampilan produk">
-                    <button class="segment active" id="compactViewBtn" type="button" onclick="setCatalogView('compact')">Ringkas</button>
-                    <button class="segment" id="gridViewBtn" type="button" onclick="setCatalogView('grid')">Gambar</button>
-                  </div>
-                  <label class="field page-size-field">
-                    <span>Tampil</span>
-                    <select id="pageSizeSelect" aria-label="Jumlah produk per halaman">
-                      <option value="12">12</option>
-                      <option value="24" selected>24</option>
-                      <option value="48">48</option>
+                    <div class="segmented" aria-label="Mode tampilan produk">
+                      <button class="segment active" id="compactViewBtn" type="button" onclick="setCatalogView('compact')" title="Tampilan Ringkas">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                      </button>
+                      <button class="segment" id="gridViewBtn" type="button" onclick="setCatalogView('grid')" title="Tampilan Gambar">
+                        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+                      </button>
+                    </div>
+
+                    <select id="pageSizeSelect" aria-label="Jumlah produk per halaman" title="Tampil per halaman">
+                      <option value="12">12 item</option>
+                      <option value="24" selected>24 item</option>
+                      <option value="48">48 item</option>
                     </select>
-                  </label>
+                  </div>
                 </div>
 
                 <div id="produkList" class="product-list view-compact"></div>
@@ -136,17 +134,29 @@
             <input type="text" id="namaPembeliInput" placeholder="Nama Pemesan (opsional)">
           </label>
 
-                  <label class="field">
-                    <span>Bayar</span>
-                    <input type="number" min="0" id="bayarInput" placeholder="Nominal bayar">
-                  </label>
+          <label class="field" style="margin-bottom: 12px;">
+            <span>Metode Pembayaran</span>
+            <div class="segmented" style="width: 100%; margin-bottom: 4px;">
+              <button class="segment active" id="btnTunai" type="button" onclick="setMetodePembayaran('Tunai')" style="width: 50%;">Tunai</button>
+              <button class="segment" id="btnQris" type="button" onclick="setMetodePembayaran('QRIS')" style="width: 50%;">QRIS</button>
+            </div>
+          </label>
 
-                  <div class="quick-payments">
-                    <button class="btn soft" type="button" onclick="setQuickBayar(20000)">20K</button>
-                    <button class="btn soft" type="button" onclick="setQuickBayar(50000)">50K</button>
-                    <button class="btn soft" type="button" onclick="setQuickBayar(100000)">100K</button>
-                    <button class="btn soft" type="button" onclick="setBayarPas()">Uang Pas</button>
-                  </div>
+          <label class="field">
+            <span>Bayar</span>
+            <input type="number" min="0" id="bayarInput" placeholder="Nominal bayar">
+          </label>
+
+          <div class="quick-payments" id="quickPaymentsBox">
+            <button class="btn soft" type="button" onclick="setQuickBayar(20000)">20K</button>
+            <button class="btn soft" type="button" onclick="setQuickBayar(50000)">50K</button>
+            <button class="btn soft" type="button" onclick="setQuickBayar(100000)">100K</button>
+            <button class="btn soft" type="button" onclick="setBayarPas()">Uang Pas</button>
+          </div>
+          
+          <div class="quick-payments" id="qrisToolsBox" style="display: none;">
+            <button class="btn soft" type="button" onclick="bukaDialogQris()" style="width: 100%; border-color: var(--primary); color: var(--primary-dark); font-weight: 800;">Tampilkan Kode QRIS</button>
+          </div>
 
                   <div class="change-row">
                     <span>Kembalian</span>
@@ -188,11 +198,12 @@
                     <tr>
                       <th>ID Transaksi</th>
                       <th>Tanggal</th>
-                    <th>Nama Pembeli</th>
+                      <th>Nama Pembeli</th>
                       <th>Item</th>
                       <th>Total</th>
                       <th>Bayar</th>
                       <th>Kembalian</th>
+                      <th>Metode</th>
                     </tr>
                   </thead>
                   <tbody id="riwayatBody"></tbody>
@@ -264,7 +275,7 @@
             </section>
 
             <section class="chart-grid">
-              <div class="panel chart-card">
+              <div class="panel chart-card wide-chart">
                 <div class="panel-header">
                   <div>
                     <p class="section-kicker">Trend</p>
@@ -287,6 +298,19 @@
                   <canvas id="categoryPieChart"></canvas>
                 </div>
                 <div id="categoryPieLegend" class="chart-legend"></div>
+              </div>
+
+              <div class="panel chart-card">
+                <div class="panel-header">
+                  <div>
+                    <p class="section-kicker">Pembayaran</p>
+                    <h3>Tunai vs QRIS</h3>
+                  </div>
+                </div>
+                <div class="chart-canvas-wrap ratio-4-3">
+                  <canvas id="metodePieChart"></canvas>
+                </div>
+                <div id="metodePieLegend" class="chart-legend"></div>
               </div>
 
               <div class="panel chart-card wide-chart">
@@ -312,16 +336,28 @@
                 </div>
                 <div class="metric-list">
                   <div>
+                    <span>Produk Terlaris</span>
+                    <strong id="topProdukText">-</strong>
+                  </div>
+                  <div>
                     <span>Rata-rata per transaksi</span>
                     <strong id="avgTransactionText">Rp 0</strong>
                   </div>
                   <div>
-                    <span>Produk aktif</span>
-                    <strong id="activeProductText">0</strong>
+                    <span>Omzet QRIS</span>
+                    <strong id="omzetQrisText">Rp 0</strong>
+                  </div>
+                  <div>
+                    <span>Omzet Tunai</span>
+                    <strong id="omzetTunaiText">Rp 0</strong>
                   </div>
                   <div>
                     <span>Produk habis</span>
                     <strong id="emptyProductText">0</strong>
+                  </div>
+                  <div>
+                    <span>Produk aktif</span>
+                    <strong id="activeProductText">0</strong>
                   </div>
                 </div>
               </section>
@@ -388,6 +424,28 @@
       <div class="receipt-actions">
         <button class="btn ghost" type="button" onclick="tutupStruk()">Tutup</button>
         <button class="btn primary" type="button" onclick="window.print()">Cetak</button>
+      </div>
+    </dialog>
+
+    <dialog id="qrisDialog" class="form-dialog" style="max-width: 340px;">
+      <div class="receipt-header">
+        <div>
+          <p class="section-kicker">Pembayaran</p>
+          <h3>Scan QRIS</h3>
+        </div>
+        <button class="icon-btn" type="button" onclick="tutupDialogQris()" aria-label="Tutup">X</button>
+      </div>
+      <div style="padding: 20px; text-align: center;">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Logo_QRIS.svg" alt="Logo QRIS" style="height: 32px; margin-bottom: 16px;">
+        <div style="background: white; padding: 12px; border-radius: 12px; border: 1px solid var(--line); margin-bottom: 16px;">
+          <!-- Placeholder QRIS image -->
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=contoh_qris_statis_toko_anda" alt="QRIS Code" style="width: 100%; height: auto; display: block; border-radius: 8px;">
+        </div>
+        <p style="color: var(--muted); font-size: 13px; margin: 0;">Silakan scan kode QRIS di atas dengan m-Banking atau e-Wallet.</p>
+        <p style="font-weight: 800; font-size: 26px; color: var(--primary-dark); margin: 8px 0 0;" id="qrisNominalText">Rp 0</p>
+      </div>
+      <div class="receipt-actions" style="padding: 0 20px 20px;">
+        <button class="btn primary" style="width: 100%; margin: 0;" type="button" onclick="tutupDialogQris()">Selesai & Tutup</button>
       </div>
     </dialog>
 

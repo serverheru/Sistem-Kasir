@@ -17,6 +17,7 @@ function simpanTransaksi(payload) {
     const items = normalisasiItems(payload && payload.items);
     const bayar = Number(payload && payload.bayar);
     const namaPembeli = payload && payload.nama_pembeli ? String(payload.nama_pembeli).trim() : "-";
+    const metodePembayaran = payload && payload.metode_pembayaran ? String(payload.metode_pembayaran).trim() : "Tunai";
 
     if (items.length === 0) {
       throw new Error("Keranjang masih kosong.");
@@ -53,7 +54,8 @@ function simpanTransaksi(payload) {
         produk.harga,
         item.qty,
         subtotal,
-        namaPembeli
+        namaPembeli,
+        metodePembayaran
       ]);
     });
 
@@ -69,7 +71,8 @@ function simpanTransaksi(payload) {
       total,
       bayar,
       kembalian,
-      namaPembeli
+      namaPembeli,
+      metodePembayaran
     ]);
 
     if (detailRows.length > 0) {
@@ -88,7 +91,8 @@ function simpanTransaksi(payload) {
       tanggal: Utilities.formatDate(tanggal, "Asia/Jakarta", "dd/MM/yyyy HH:mm:ss"),
       total: total,
       bayar: bayar,
-      kembalian: kembalian
+      kembalian: kembalian,
+      metode_pembayaran: metodePembayaran
     };
   } finally {
     lock.releaseLock();
@@ -154,7 +158,8 @@ function getRiwayatTransaksi() {
         total: Number(row[2]) || 0,
         bayar: Number(row[3]) || 0,
         kembalian: Number(row[4]) || 0,
-        jumlah_item: jumlahItemByTransaksi[idTransaksi] || 0
+        jumlah_item: jumlahItemByTransaksi[idTransaksi] || 0,
+        metode_pembayaran: row[6] || "Tunai"
       };
     });
 }
@@ -165,7 +170,10 @@ function getRingkasanHariIni() {
   const ringkasan = {
     jumlah_transaksi: 0,
     omzet: 0,
-    jumlah_item: 0
+    omzet_tunai: 0,
+    omzet_qris: 0,
+    jumlah_item: 0,
+    produk_terlaris: "-"
   };
 
   if (!transaksiSheet) {
@@ -192,7 +200,14 @@ function getRingkasanHariIni() {
     if (tanggalKey === todayKey) {
       transaksiHariIni[idTransaksi] = true;
       ringkasan.jumlah_transaksi += 1;
-      ringkasan.omzet += Number(row[2]) || 0;
+      const tTotal = Number(row[2]) || 0;
+      ringkasan.omzet += tTotal;
+      const metode = row[6] || "Tunai";
+      if (metode === "QRIS") {
+        ringkasan.omzet_qris += tTotal;
+      } else {
+        ringkasan.omzet_tunai += tTotal;
+      }
     }
   });
 
@@ -202,14 +217,27 @@ function getRingkasanHariIni() {
 
   const detailData = detailSheet.getDataRange().getValues();
   detailData.shift();
+  
+  const qtyPerProduk = {};
 
   detailData.forEach(row => {
     const idTransaksi = row[0];
 
     if (transaksiHariIni[idTransaksi]) {
-      ringkasan.jumlah_item += Number(row[4]) || 0;
+      const namaProduk = row[2] || "-";
+      const qty = Number(row[4]) || 0;
+      ringkasan.jumlah_item += qty;
+      qtyPerProduk[namaProduk] = (qtyPerProduk[namaProduk] || 0) + qty;
     }
   });
+
+  let maxQty = 0;
+  for (const p in qtyPerProduk) {
+    if (qtyPerProduk[p] > maxQty) {
+      maxQty = qtyPerProduk[p];
+      ringkasan.produk_terlaris = p;
+    }
+  }
 
   return ringkasan;
 }

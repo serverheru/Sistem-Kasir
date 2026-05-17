@@ -6,6 +6,7 @@
   let toastTimer = null;
   let catalogView = "compact";
   let produkPage = 1;
+  let metodePembayaran = "Tunai";
 
   const CHART_COLORS = ["#1f7a45", "#d6a02a", "#8a531f", "#14552f", "#a33a25", "#7a6045"];
 
@@ -388,6 +389,43 @@
     hitungKembalian();
   }
 
+  function setMetodePembayaran(metode) {
+    metodePembayaran = metode;
+    document.getElementById("btnTunai").classList.toggle("active", metode === "Tunai");
+    document.getElementById("btnQris").classList.toggle("active", metode === "QRIS");
+    
+    if (metode === "QRIS") {
+      document.getElementById("quickPaymentsBox").style.display = "none";
+      document.getElementById("qrisToolsBox").style.display = "flex";
+      setBayarPas();
+      document.getElementById("bayarInput").readOnly = true;
+    } else {
+      document.getElementById("quickPaymentsBox").style.display = "flex";
+      document.getElementById("qrisToolsBox").style.display = "none";
+      document.getElementById("bayarInput").readOnly = false;
+    }
+  }
+
+  function bukaDialogQris() {
+    const total = hitungTotal();
+    if (total <= 0) {
+      tampilkanPesan("Keranjang masih kosong.", "error");
+      return;
+    }
+    document.getElementById("qrisNominalText").innerText = formatRupiah(total);
+    const dialog = document.getElementById("qrisDialog");
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    }
+  }
+
+  function tutupDialogQris() {
+    const dialog = document.getElementById("qrisDialog");
+    if (dialog.open) {
+      dialog.close();
+    }
+  }
+
   function simpan() {
     if (keranjang.length === 0) {
       tampilkanPesan("Keranjang masih kosong.", "error");
@@ -410,7 +448,8 @@
         };
       }),
       nama_pembeli: document.getElementById("namaPembeliInput").value.trim(),
-      bayar: bayar
+      bayar: bayar,
+      metode_pembayaran: metodePembayaran
     };
 
     setSavingState(true);
@@ -431,6 +470,7 @@
         keranjang = [];
         document.getElementById("bayarInput").value = "";
         document.getElementById("namaPembeliInput").value = "";
+        setMetodePembayaran("Tunai"); // Reset ke Tunai setelah simpan
         renderKeranjang();
         loadProduk();
         loadRiwayat();
@@ -497,6 +537,8 @@
 
     filtered.forEach(function (item) {
       const tr = document.createElement("tr");
+      const metode = item.metode_pembayaran || "Tunai";
+      const metodeClass = metode === "QRIS" ? "stock-badge" : "pill";
       tr.innerHTML = `
         <td>${escapeHtml(item.id_transaksi)}</td>
         <td>${escapeHtml(item.tanggal)}</td>
@@ -505,6 +547,7 @@
         <td>${formatRupiah(item.total)}</td>
         <td>${formatRupiah(item.bayar)}</td>
         <td>${formatRupiah(item.kembalian)}</td>
+        <td><span class="${metodeClass}">${escapeHtml(metode)}</span></td>
       `;
       tbody.appendChild(tr);
     });
@@ -518,6 +561,11 @@
     document.getElementById("todayRevenueText").innerText = formatRupiah(omzet);
     document.getElementById("soldCountText").innerText = Number(data.jumlah_item || 0);
     document.getElementById("avgTransactionText").innerText = formatRupiah(jumlahTransaksi ? omzet / jumlahTransaksi : 0);
+    
+    if (document.getElementById("omzetQrisText")) document.getElementById("omzetQrisText").innerText = formatRupiah(data.omzet_qris || 0);
+    if (document.getElementById("omzetTunaiText")) document.getElementById("omzetTunaiText").innerText = formatRupiah(data.omzet_tunai || 0);
+    if (document.getElementById("topProdukText")) document.getElementById("topProdukText").innerText = data.produk_terlaris || "-";
+
     renderDashboardCharts();
   }
 
@@ -692,6 +740,27 @@
     drawLineChart("trendChart", getRevenueTrendData());
     drawPieChart("categoryPieChart", getStockByCategoryData(), "categoryPieLegend");
     drawBarChart("stockBarChart", getTopStockData());
+    if (document.getElementById("metodePieChart")) {
+      drawPieChart("metodePieChart", getMetodePieData(), "metodePieLegend");
+    }
+  }
+
+  function getMetodePieData() {
+    const map = { "Tunai": 0, "QRIS": 0 };
+
+    riwayatList.forEach(function (item) {
+      const metode = item.metode_pembayaran || "Tunai";
+      if (metode === "QRIS") {
+        map["QRIS"] += Number(item.total || 0);
+      } else {
+        map["Tunai"] += Number(item.total || 0);
+      }
+    });
+
+    return [
+      { label: "Tunai", value: map["Tunai"] },
+      { label: "QRIS", value: map["QRIS"] }
+    ];
   }
 
   function getRevenueTrendData() {
