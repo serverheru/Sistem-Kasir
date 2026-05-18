@@ -50,14 +50,36 @@
     document.getElementById("historySearchInput").addEventListener("input", renderRiwayat);
     window.addEventListener("resize", debounce(renderDashboardCharts, 180));
 
+    // Keyboard shortcuts
+    document.addEventListener("keydown", function (e) {
+      // Ctrl+S or Cmd+S = simpan transaksi
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        var kasirPage = document.getElementById("page-kasir");
+        if (kasirPage && kasirPage.classList.contains("active")) {
+          simpan();
+        }
+      }
+      // Escape = close any open dialog
+      if (e.key === "Escape") {
+        closeSidebar();
+      }
+    });
+
     renderKeranjang();
     loadProduk();
     loadRiwayat();
     loadRingkasanHariIni();
+
+    // Dismiss loading overlay after a short delay
+    setTimeout(function () {
+      var overlay = document.getElementById("loadingOverlay");
+      if (overlay) overlay.classList.add("hidden");
+    }, 1200);
   });
 
   function showPage(pageName) {
-    const meta = PAGE_META[pageName] || PAGE_META.kasir;
+    var meta = PAGE_META[pageName] || PAGE_META.kasir;
 
     document.querySelectorAll(".page").forEach(function (page) {
       page.classList.toggle("active", page.id === "page-" + pageName);
@@ -66,6 +88,12 @@
     document.querySelectorAll(".nav-link").forEach(function (link) {
       link.classList.toggle("active", link.dataset.page === pageName);
     });
+
+    // Update mobile bottom nav
+    document.querySelectorAll(".mobile-nav-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.dataset.page === pageName);
+    });
+
     closeSidebar();
 
     document.getElementById("pageKicker").innerText = meta.kicker;
@@ -82,6 +110,9 @@
     if (pageName === "laporan") {
       renderDashboardCharts();
     }
+
+    // Scroll to top on page change
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function toggleSidebar() {
@@ -1105,6 +1136,7 @@
       <div class="receipt-line"><span>ID</span><strong>${escapeHtml(response.id_transaksi)}</strong></div>
       <div class="receipt-line"><span>Pembeli</span><strong>${escapeHtml(response.nama_pembeli || "-")}</strong></div>
       <div class="receipt-line"><span>Waktu</span><strong>${escapeHtml(response.tanggal || "-")}</strong></div>
+      <div class="receipt-line"><span>Metode</span><strong>${escapeHtml(response.metode_pembayaran || "Tunai")}</strong></div>
       <div class="receipt-separator"></div>
       ${itemRows}
       <div class="receipt-separator"></div>
@@ -1137,14 +1169,15 @@
   }
 
   function tampilkanPesan(message, type) {
-    const toast = document.getElementById("toast");
-    toast.innerText = message;
-    toast.style.background = type === "error" ? "#a33a25" : "#2b1a10";
-    toast.classList.add("show");
+    var toast = document.getElementById("toast");
+    var icon = type === "error" ? "✕" : "✓";
+    toast.innerHTML = "<span style='font-size:16px;line-height:1;'>" + icon + "</span> " + message;
+    toast.style.background = type === "error" ? "#dc2626" : "#1c1612";
+    toast.className = "toast show" + (type === "error" ? " toast-error" : "");
 
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () {
-      toast.classList.remove("show");
+      toast.className = "toast";
     }, 3200);
   }
 
